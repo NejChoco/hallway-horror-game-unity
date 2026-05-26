@@ -15,7 +15,7 @@ public class FPSController : MonoBehaviour
     public float lookXLimit = 45f;
 
     Vector3 moveDirection = Vector3.zero;
-    float rotationX = 0;
+    public float rotationX = 0;
 
     public bool canMove = true;
 
@@ -70,7 +70,11 @@ public class FPSController : MonoBehaviour
         #endregion
 
         #region Handles Rotation
-        characterController.Move(moveDirection * Time.deltaTime);
+        // ONLY try to move if the controller is actively turned on (prevents teleport warnings)
+        if (characterController.enabled)
+        {
+            characterController.Move(moveDirection * Time.deltaTime);
+        }
 
         if (canMove && playerCamera != null)
         {
