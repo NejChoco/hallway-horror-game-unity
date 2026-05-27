@@ -24,21 +24,16 @@ public class GameManager : MonoBehaviour
         if (endlessManager != null)
         {
             endlessManager.WipeWorldMemory();
-
-            // (We removed the aggressive ClearAllAnomalies from here so it doesn't delete your future!)
-
             endlessManager.SyncAllRoomNames();
         }
 
-        if (currentLevel >= winLevel)
-        {
-            Debug.Log("<color=orange><b>GAME FINISHED!</b></color>");
-        }
+        if (currentLevel >= winLevel) Debug.Log("<color=orange><b>GAME FINISHED!</b></color>");
     }
 
     public void ResetLevel()
     {
         currentLevel = 0;
+
         if (endlessManager != null)
         {
             endlessManager.ClearAllAnomalies();
@@ -49,10 +44,8 @@ public class GameManager : MonoBehaviour
 
     public void EvaluateTransition(bool isTurningBack, bool leavingAnomalyRoom, int roomID, string roomName)
     {
-        bool expectedToTurnBack = isFlowReversed;
         bool anomalyVisible = leavingAnomalyRoom || endlessManager.IsAnomalyVisible(roomID, isTurningBack);
-
-        if (anomalyVisible) expectedToTurnBack = !expectedToTurnBack;
+        bool expectedToTurnBack = anomalyVisible;
 
         bool isSuccess = (isTurningBack == expectedToTurnBack);
 
@@ -63,10 +56,12 @@ public class GameManager : MonoBehaviour
             if (anomalyVisible)
             {
                 isFlowReversed = !isFlowReversed;
-
-                // THE FIX: We ONLY scrub the physical world if you just fled from an anomaly!
-                // This deletes the ghost behind you, but leaves normal future rooms perfectly safe.
-                if (endlessManager != null) endlessManager.ClearAllAnomalies();
+                if (endlessManager != null)
+                {
+                    endlessManager.ClearAllAnomalies();
+                    // THE FIX: Tell the treadmill to delete the stale buffer!
+                    endlessManager.FlushAndRebuildBuffer();
+                }
             }
 
             IncreaseLevel();
@@ -74,7 +69,11 @@ public class GameManager : MonoBehaviour
         else
         {
             Debug.Log("<color=red>Wrong choice! Resetting...</color>");
-            isFlowReversed = isTurningBack;
+            if (isTurningBack) isFlowReversed = !isFlowReversed;
+
+            // THE FIX: Flush the stale buffer if you fail, too!
+            if (endlessManager != null) endlessManager.FlushAndRebuildBuffer();
+
             ResetLevel();
         }
     }

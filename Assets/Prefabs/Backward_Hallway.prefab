@@ -223,7 +223,7 @@ GameObject:
   - component: {fileID: 9176333894625902419}
   - component: {fileID: -1296712523373902898}
   m_Layer: 0
-  m_Name: Hallway_02_WithAnomalies
+  m_Name: Backward_Hallway
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -269,7 +269,8 @@ MonoBehaviour:
   socketIn: {fileID: 1137324315017256835}
   socketOut: {fileID: 2729764835995714636}
   isAnomaly: 0
-  exitTrigger: {fileID: 8781723458027643135}
+  globalIndex: 0
+  isBackwardPrefab: 1
 --- !u!114 &-1296712523373902898
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3671,7 +3672,7 @@ GameObject:
   - component: {fileID: 3449347822014715570}
   - component: {fileID: 4822736179550257211}
   m_Layer: 0
-  m_Name: ExitTrigger (1)
+  m_Name: Entry Trigger
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

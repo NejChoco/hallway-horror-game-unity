@@ -4,7 +4,7 @@ using UnityEngine;
 public class EndlessManager : MonoBehaviour
 {
     [Header("Debug Options")]
-    public bool forceAnomaliesForTesting = false; // Check this box in Unity to test!
+    public bool forceAnomaliesForTesting = false;
 
     [Header("Prefabs")]
     public Segment normalHallway;
@@ -17,13 +17,17 @@ public class EndlessManager : MonoBehaviour
     private Transform playerTransform;
     private Segment currentStandingSegment = null;
 
-    // THE NEW TRACKER: Keeps count of how many boring rooms you've seen
     private int normalStreak = 0;
-
-    // THE UPGRADED MEMORY: Now uses strict ID numbers instead of 3D coordinates!
     private Dictionary<int, bool> roomMemory = new Dictionary<int, bool>();
     private int frontGlobalIndex = 0;
     private int backGlobalIndex = 0;
+
+    // The Grace Period flag
+    private bool isFlushingBuffer = false;
+
+    public static EndlessManager instance;
+
+    void Awake() { instance = this; }
 
     void Start()
     {
@@ -37,20 +41,21 @@ public class EndlessManager : MonoBehaviour
         frontGlobalIndex = 0;
         backGlobalIndex = 0;
 
-        // Manually spawn the very first room as Room #0
         Segment firstSeg = Instantiate(normalHallway, Vector3.zero, Quaternion.identity);
         firstSeg.globalIndex = 0;
         SetupSegment(firstSeg);
         activeSegments.Add(firstSeg);
 
         for (int i = 0; i < 4; i++) SpawnForward();
+
         PlacePlayerAtStart();
     }
 
     void SpawnForward()
     {
         bool lastWasCorner = activeSegments[activeSegments.Count - 1].gameObject.name.Contains("Corner");
-        Segment prefab = lastWasCorner ? normalHallway : corners[Random.Range(0, corners.Length)];
+        Segment basePrefab = GameManager.instance.isFlowReversed ? backwardHallway : normalHallway;
+        Segment prefab = lastWasCorner ? basePrefab : corners[Random.Range(0, corners.Length)];
 
         Segment newSeg = Instantiate(prefab);
         Transform lastOut = activeSegments[activeSegments.Count - 1].socketOut;
@@ -58,7 +63,6 @@ public class EndlessManager : MonoBehaviour
         newSeg.transform.rotation = lastOut.rotation * Quaternion.Inverse(newSeg.socketIn.localRotation);
         newSeg.transform.position = lastOut.position - (newSeg.socketIn.position - newSeg.transform.position);
 
-        // Stamp this room with the next positive ID (1, 2, 3...)
         frontGlobalIndex++;
         newSeg.globalIndex = frontGlobalIndex;
 
@@ -69,7 +73,8 @@ public class EndlessManager : MonoBehaviour
     void SpawnBackward()
     {
         bool firstWasCorner = activeSegments[0].gameObject.name.Contains("Corner");
-        Segment prefab = firstWasCorner ? backwardHallway : corners[Random.Range(0, corners.Length)];
+        Segment basePrefab = GameManager.instance.isFlowReversed ? backwardHallway : normalHallway;
+        Segment prefab = firstWasCorner ? basePrefab : corners[Random.Range(0, corners.Length)];
 
         Segment newSeg = Instantiate(prefab);
         Transform firstIn = activeSegments[0].socketIn;
@@ -77,7 +82,6 @@ public class EndlessManager : MonoBehaviour
         newSeg.transform.rotation = firstIn.rotation * Quaternion.Inverse(newSeg.socketOut.localRotation);
         newSeg.transform.position = firstIn.position - (newSeg.socketOut.position - newSeg.transform.position);
 
-        // Stamp this room with the next negative ID (-1, -2, -3...)
         backGlobalIndex--;
         newSeg.globalIndex = backGlobalIndex;
 
@@ -92,39 +96,23 @@ public class EndlessManager : MonoBehaviour
 
         newSeg.gameObject.name = newSeg.gameObject.name.Replace("(Clone)", "") + "_Lvl_" + GameManager.instance.currentLevel;
 
-        // MEMORY CHECK: Ask the bank if it has seen this exact ID number before!
-        // MEMORY CHECK: Ask the bank if it has seen this exact ID number before!
-        // MEMORY CHECK: Ask the bank if it has seen this exact ID number before!
-        if (roomMemory.ContainsKey(newSeg.globalIndex))
-        {
-            isAnomaly = roomMemory[newSeg.globalIndex];
-        }
+        if (roomMemory.ContainsKey(newSeg.globalIndex)) isAnomaly = roomMemory[newSeg.globalIndex];
         else
         {
             if (!isCorner && GameManager.instance.currentLevel > 0)
             {
-                // THE DEBUG FIX: If the box is checked, force an anomaly!
-                if (forceAnomaliesForTesting)
-                {
-                    isAnomaly = true;
-                }
-                // THE PITY TIMER: If you just walked through 2 normal rooms, force an anomaly!
-                else if (normalStreak >= 2)
-                {
-                    isAnomaly = true;
-                }
-                else
-                {
-                    // Otherwise, flip a heavy 45% coin
-                    isAnomaly = Random.value < 0.45f;
-                }
+                if (forceAnomaliesForTesting) isAnomaly = true;
 
-                // Keep track of the streak!
+                // THE PARANOIA MECHANIC: 
+                // Instead of 0% (safe), there is a rare 10% chance of a back-to-back anomaly!
+                else if (isFlushingBuffer) isAnomaly = Random.value < 0.10f;
+
+                else if (normalStreak >= 2) isAnomaly = true;
+                else isAnomaly = Random.value < 0.35f; // Standard 35% chance
+
                 if (isAnomaly) normalStreak = 0;
                 else normalStreak++;
             }
-
-            // Save the decision to the ID number
             roomMemory.Add(newSeg.globalIndex, isAnomaly);
         }
 
@@ -141,8 +129,10 @@ public class EndlessManager : MonoBehaviour
     {
         CharacterController cc = playerTransform.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;
+
         playerTransform.position = activeSegments[2].socketIn.position + Vector3.up * 1.5f;
         playerTransform.rotation = activeSegments[2].socketIn.rotation;
+
         if (cc != null) cc.enabled = true;
     }
 
@@ -159,7 +149,10 @@ public class EndlessManager : MonoBehaviour
         for (int i = 0; i < activeSegments.Count; i++)
         {
             if (activeSegments[i] == null) continue;
-            float dist = Vector3.Distance(playerTransform.position, activeSegments[i].transform.position);
+
+            Vector3 trueCenter = (activeSegments[i].socketIn.position + activeSegments[i].socketOut.position) / 2f;
+            float dist = Vector3.Distance(playerTransform.position, trueCenter);
+
             if (dist < closestDist)
             {
                 closestDist = dist;
@@ -202,8 +195,6 @@ public class EndlessManager : MonoBehaviour
         }
     }
 
-    // THE FIX: Now strictly uses the ID number to find the exact starting room
-    // THE FIX: We added 'playerIsRetreating' to the parameters
     public bool IsAnomalyVisible(int startRoomID, bool playerIsRetreating)
     {
         int step = GameManager.instance.isFlowReversed ? -1 : 1;
@@ -219,7 +210,6 @@ public class EndlessManager : MonoBehaviour
         }
 
         if (startIndex == -1) return false;
-
         bool hasPassedCorner = false;
 
         for (int i = startIndex; i >= 0 && i < activeSegments.Count; i += step)
@@ -228,26 +218,16 @@ public class EndlessManager : MonoBehaviour
             {
                 if (activeSegments[i].isAnomaly) return true;
 
-                // When the scanner hits a corner...
                 if (activeSegments[i].gameObject.name.Contains("Corner"))
                 {
-                    // If you are retreating, we allow the scanner to peek ONE room past the corner!
-                    if (playerIsRetreating && !hasPassedCorner)
-                    {
-                        hasPassedCorner = true;
-                    }
-                    else
-                    {
-                        // Otherwise, standard strict vision block.
-                        break;
-                    }
+                    if (playerIsRetreating && !hasPassedCorner) hasPassedCorner = true;
+                    else break;
                 }
             }
         }
         return false;
     }
 
-    // NEW METHOD: Cleans up the "Frankenstein" names so your console stops lying!
     public void SyncAllRoomNames()
     {
         foreach (Segment seg in activeSegments)
@@ -257,46 +237,58 @@ public class EndlessManager : MonoBehaviour
                 string baseName = seg.gameObject.name;
                 int trimIndex = baseName.IndexOf("_Lvl_");
 
-                // Strip off the old level tag
                 if (trimIndex > 0) baseName = baseName.Substring(0, trimIndex);
                 else baseName = baseName.Replace("(Clone)", "");
 
-                // Stamp it with the correct current level
                 seg.gameObject.name = baseName + "_Lvl_" + GameManager.instance.currentLevel;
             }
         }
     }
 
-    public void WipeWorldMemory()
-    {
-        roomMemory.Clear();
-        normalStreak = 0; // Reset streak on Level Up!
-    }
+    public void WipeWorldMemory() { roomMemory.Clear(); }
 
     public void ClearAllAnomalies()
     {
         roomMemory.Clear();
-        normalStreak = 0; // Reset streak when you fail!
+        normalStreak = 0;
 
         foreach (Segment seg in activeSegments)
         {
             if (seg != null && seg.isAnomaly)
             {
                 seg.isAnomaly = false;
-
                 AnomalyController ctrl = seg.GetComponent<AnomalyController>();
                 if (ctrl != null) ctrl.Setup(false, seg.gameObject.name);
-
                 RoomSign sign = seg.GetComponentInChildren<RoomSign>();
                 if (sign != null) sign.SetLevelSign(0);
             }
         }
     }
 
-    public static EndlessManager instance; // Add this!
-
-    void Awake()
+    public void FlushAndRebuildBuffer()
     {
-        instance = this; // Add this!
+        if (activeSegments.Count == 0) return;
+
+        Segment currentRoom = activeSegments[currentPlayerIndex];
+
+        for (int i = activeSegments.Count - 1; i >= 0; i--)
+        {
+            if (i != currentPlayerIndex)
+            {
+                if (activeSegments[i] != null) Destroy(activeSegments[i].gameObject);
+                activeSegments.RemoveAt(i);
+            }
+        }
+
+        frontGlobalIndex = currentRoom.globalIndex;
+        backGlobalIndex = currentRoom.globalIndex;
+
+        // Activate the Grace Period before building the new buffer!
+        isFlushingBuffer = true;
+        for (int i = 0; i < 3; i++) SpawnForward();
+        for (int i = 0; i < 3; i++) SpawnBackward();
+        isFlushingBuffer = false;
+
+        currentPlayerIndex = 3;
     }
 }
