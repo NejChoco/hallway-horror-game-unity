@@ -1,22 +1,27 @@
 using UnityEngine;
+using TMPro; // Assuming you are using TextMeshPro!
 
 public class RoomSign : MonoBehaviour
 {
-    // Drag your 001, 002, 101, etc., objects into this list in the Inspector
-    public GameObject[] signModels;
+    private TMP_Text[] allSigns;
 
-    public void SetLevelSign(int level)
+    void Awake()
     {
-        // Safety check to ensure we don't go out of bounds
-        if (level < 0 || level >= signModels.Length) return;
+        // This automatically finds all 4 text objects inside your "Room numbers" folder!
+        allSigns = GetComponentsInChildren<TMP_Text>();
+    }
 
-        // Turn off all signs, turn on only the one that matches the current level
-        for (int i = 0; i < signModels.Length; i++)
+    public void SetLevelSign(int currentLevel)
+    {
+        if (allSigns == null || allSigns.Length == 0) return;
+
+        // "D3" formats the number to always have 3 digits (001, 002, 010, etc.)
+        string levelString = currentLevel.ToString("D3");
+
+        // Loop through all 4 signs and update them simultaneously
+        foreach (TMP_Text sign in allSigns)
         {
-            if (signModels[i] != null)
-            {
-                signModels[i].SetActive(i == level);
-            }
+            sign.text = levelString;
         }
     }
 }
