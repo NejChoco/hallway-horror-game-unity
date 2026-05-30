@@ -130,8 +130,12 @@ public class EndlessManager : MonoBehaviour
         CharacterController cc = playerTransform.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;
 
-        playerTransform.position = activeSegments[2].socketIn.position + Vector3.up * 1.5f;
-        playerTransform.rotation = activeSegments[2].socketIn.rotation;
+        Transform entrance = activeSegments[2].socketIn;
+
+        // NEGATIVE X-AXIS: Subtracting the right vector pushes you safely inside the room!
+        playerTransform.position = entrance.position - (entrance.right * 4f) + (Vector3.up * 1.5f);
+
+        playerTransform.rotation = entrance.rotation;
 
         if (cc != null) cc.enabled = true;
     }

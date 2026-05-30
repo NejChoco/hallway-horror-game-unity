@@ -3,14 +3,21 @@ using UnityEngine;
 
 public class PowerOutage : MonoBehaviour
 {
-    public Light playerFlashlight;
+    // 1. We changed this from "Light" to "FlashlightController" and made it private!
+    private FlashlightController playerFlashlight;
+
     public float timeBeforeBlackout = 10f; // 10 seconds of safe, lit hallway
 
     void Start()
     {
-        // 1. Ensure the game starts with the power ON
+        // 2. Automatically find the flashlight script in the scene!
+        playerFlashlight = FindObjectOfType<FlashlightController>();
+
+        // Ensure the game starts with the power ON
         AutoLight.isPowerOut = false;
-        if (playerFlashlight != null) playerFlashlight.enabled = false;
+
+        // Note: We removed the code that forces the light off here, 
+        // because your FlashlightController handles its own starting state perfectly now!
 
         StartCoroutine(BlackoutSequence());
     }
@@ -20,10 +27,10 @@ public class PowerOutage : MonoBehaviour
         // Wait for the player to get comfortable
         yield return new WaitForSeconds(timeBeforeBlackout);
 
-        // 2. The Power Dies! Tell all future generated rooms to spawn in the dark.
+        // The Power Dies! Tell all future generated rooms to spawn in the dark.
         AutoLight.isPowerOut = true;
 
-        // 3. Find every cloned light currently turned on in Level 0 and shut them off instantly
+        // Find every cloned light currently turned on in Level 0 and shut them off instantly
         AutoLight[] allActiveLights = FindObjectsOfType<AutoLight>();
         foreach (AutoLight light in allActiveLights)
         {
@@ -33,7 +40,10 @@ public class PowerOutage : MonoBehaviour
         // Wait 2 terrifying seconds in pitch black
         yield return new WaitForSeconds(2f);
 
-        // 4. Turn on the flashlight
-        if (playerFlashlight != null) playerFlashlight.enabled = true;
+        // 3. Turn on the flashlight USING OUR NEW SOUND-ENABLED METHOD!
+        if (playerFlashlight != null)
+        {
+            playerFlashlight.ForceLightOn();
+        }
     }
 }
