@@ -25,18 +25,15 @@ public class FPSController : MonoBehaviour
     {
         characterController = GetComponent<CharacterController>();
 
-        // Auto-assign camera if not set in Inspector
         if (playerCamera == null)
             playerCamera = GetComponentInChildren<Camera>();
-
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
     }
 
     void Update()
     {
         // Re-lock cursor if user clicks back into game window
-        if (Input.GetMouseButtonDown(0))
+        // Only lock the cursor if the game is actually playing!
+        if (Input.GetMouseButtonDown(0) && canMove)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;

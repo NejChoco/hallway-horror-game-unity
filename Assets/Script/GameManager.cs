@@ -2,6 +2,9 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
+    [Header("End Game UI")]
+    public GameObject voidScreenUI;
+
     public static GameManager instance;
     public EndlessManager endlessManager;
     public int currentLevel = 0;
@@ -27,7 +30,21 @@ public class GameManager : MonoBehaviour
             endlessManager.SyncAllRoomNames();
         }
 
-        if (currentLevel >= winLevel) Debug.Log("<color=orange><b>GAME FINISHED!</b></color>");
+        if (currentLevel >= winLevel)
+        {
+            Debug.Log("<color=cyan>GAME FINISHED STATE REACHED!</color>");
+
+            // ==========================================
+            // THE NUKE: Destroy the duck from the future!
+            // ==========================================
+            if (endlessManager != null)
+            {
+                endlessManager.ClearAllAnomalies();
+                endlessManager.FlushAndRebuildBuffer();
+            }
+
+            return;
+        }
     }
 
     public void ResetLevel()
@@ -44,6 +61,16 @@ public class GameManager : MonoBehaviour
 
     public void EvaluateTransition(bool isTurningBack, bool leavingAnomalyRoom, int roomID, string roomName)
     {
+        // ==========================================
+        // THE HARD STOP: The Level 5 Lock
+        // ==========================================
+        if (currentLevel >= winLevel)
+        {
+            Debug.Log("<color=magenta>Game Finished! Ignoring floor triggers. Let the player walk into the void.</color>");
+            return; // This completely kills the function. No math, no resetting!
+        }
+        // ==========================================
+
         bool anomalyVisible = leavingAnomalyRoom || endlessManager.IsAnomalyVisible(roomID, isTurningBack);
         bool expectedToTurnBack = anomalyVisible;
 
@@ -59,7 +86,6 @@ public class GameManager : MonoBehaviour
                 if (endlessManager != null)
                 {
                     endlessManager.ClearAllAnomalies();
-                    // THE FIX: Tell the treadmill to delete the stale buffer!
                     endlessManager.FlushAndRebuildBuffer();
                 }
             }
@@ -71,7 +97,6 @@ public class GameManager : MonoBehaviour
             Debug.Log("<color=red>Wrong choice! Resetting...</color>");
             if (isTurningBack) isFlowReversed = !isFlowReversed;
 
-            // THE FIX: Flush the stale buffer if you fail, too!
             if (endlessManager != null) endlessManager.FlushAndRebuildBuffer();
 
             ResetLevel();

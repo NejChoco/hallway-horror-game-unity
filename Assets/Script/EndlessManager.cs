@@ -1,8 +1,14 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class EndlessManager : MonoBehaviour
 {
+    [Header("Ending Setup")]
+    public Segment endingHallwayPrefab;
+    public int finalLevel = 10;
+    private bool hasSpawnedEnding = false;
+
     [Header("Debug Options")]
     public bool forceAnomaliesForTesting = false;
 
@@ -53,9 +59,34 @@ public class EndlessManager : MonoBehaviour
 
     void SpawnForward()
     {
+        if (hasSpawnedEnding) return;
+
+        Segment prefab;
         bool lastWasCorner = activeSegments[activeSegments.Count - 1].gameObject.name.Contains("Corner");
-        Segment basePrefab = GameManager.instance.isFlowReversed ? backwardHallway : normalHallway;
-        Segment prefab = lastWasCorner ? basePrefab : corners[Random.Range(0, corners.Length)];
+        bool isEndingHallway = false;
+
+        if (GameManager.instance.currentLevel >= finalLevel)
+        {
+            prefab = endingHallwayPrefab;
+            hasSpawnedEnding = true;
+            isEndingHallway = true;
+            Debug.Log("<color=magenta><b>SPAWNING FINAL VOID TUNNEL (FORWARD)</b></color>");
+        }
+        else
+        {
+            Segment basePrefab = GameManager.instance.isFlowReversed ? backwardHallway : normalHallway;
+
+            if (GameManager.instance.currentLevel >= finalLevel - 1)
+            {
+                // Level 9: Force straight line
+                prefab = basePrefab;
+            }
+            else
+            {
+                // Normal random generation
+                prefab = lastWasCorner ? basePrefab : corners[Random.Range(0, corners.Length)];
+            }
+        }
 
         Segment newSeg = Instantiate(prefab);
         Transform lastOut = activeSegments[activeSegments.Count - 1].socketOut;
@@ -68,25 +99,237 @@ public class EndlessManager : MonoBehaviour
 
         SetupSegment(newSeg);
         activeSegments.Add(newSeg);
+
+        // Fade in — slower and with lights for the ending hallway
+        if (isEndingHallway)
+            StartCoroutine(FadeInSegmentWithLights(newSeg, 0.6f));
+        else
+            StartCoroutine(FadeInSegment(newSeg, 0.3f));
     }
 
     void SpawnBackward()
     {
-        bool firstWasCorner = activeSegments[0].gameObject.name.Contains("Corner");
-        Segment basePrefab = GameManager.instance.isFlowReversed ? backwardHallway : normalHallway;
-        Segment prefab = firstWasCorner ? basePrefab : corners[Random.Range(0, corners.Length)];
+        if (hasSpawnedEnding) return;
 
-        Segment newSeg = Instantiate(prefab);
-        Transform firstIn = activeSegments[0].socketIn;
+        Segment prefab;
+        bool isEndingHallway = false;
 
-        newSeg.transform.rotation = firstIn.rotation * Quaternion.Inverse(newSeg.socketOut.localRotation);
-        newSeg.transform.position = firstIn.position - (newSeg.socketOut.position - newSeg.transform.position);
+        if (GameManager.instance.currentLevel >= finalLevel)
+        {
+            prefab = endingHallwayPrefab;
+            hasSpawnedEnding = true;
+            isEndingHallway = true;
+            Debug.Log("<color=magenta><b>SPAWNING FINAL VOID TUNNEL (BACKWARD)</b></color>");
+        }
+        else
+        {
+            Segment basePrefab = GameManager.instance.isFlowReversed ? backwardHallway : normalHallway;
+
+            if (GameManager.instance.currentLevel >= finalLevel - 1)
+            {
+                prefab = basePrefab;
+            }
+            else
+            {
+                bool firstWasCorner = activeSegments[0].gameObject.name.Contains("Corner");
+                prefab = firstWasCorner ? basePrefab : corners[Random.Range(0, corners.Length)];
+            }
+        }
+
+        Segment newSeg = Instantiate(prefab, new Vector3(0, -1000, 0), Quaternion.identity);
+        Collider[] colliders = newSeg.GetComponentsInChildren<Collider>();
+        foreach (Collider col in colliders) col.enabled = false;
+
+        Transform currentIn = activeSegments[0].socketIn;
+
+        newSeg.transform.rotation = currentIn.rotation * Quaternion.Inverse(newSeg.socketOut.localRotation);
+        newSeg.transform.position = currentIn.position - (newSeg.socketOut.position - newSeg.transform.position);
+
+        StartCoroutine(EnableCollidersAfterDelay(colliders));
+
+        // Fade in — slower and with lights for the ending hallway
+        if (isEndingHallway)
+            StartCoroutine(FadeInSegmentWithLights(newSeg, 0.6f));
+        else
+            StartCoroutine(FadeInSegment(newSeg, 0.3f));
 
         backGlobalIndex--;
         newSeg.globalIndex = backGlobalIndex;
 
         SetupSegment(newSeg);
         activeSegments.Insert(0, newSeg);
+
+        // After inserting at index 0, everything shifted up by 1.
+        // Correct the player index so Update() doesn't think they moved rooms.
+        currentPlayerIndex++;
+    }
+
+    IEnumerator EnableCollidersAfterDelay(Collider[] colliders)
+    {
+        yield return new WaitForSeconds(0.1f);
+        foreach (Collider col in colliders)
+        {
+            if (col != null) col.enabled = true;
+        }
+    }
+
+    IEnumerator FadeInSegment(Segment seg, float duration)
+    {
+        if (seg == null) yield break;
+
+        Renderer[] renderers = seg.GetComponentsInChildren<Renderer>();
+
+        List<Material> mats = new List<Material>();
+        foreach (Renderer r in renderers)
+        {
+            foreach (Material m in r.materials)
+            {
+                if (m.HasProperty("_Color"))
+                {
+                    Color c = m.color;
+                    c.a = 0f;
+                    m.color = c;
+                    mats.Add(m);
+
+                    m.SetFloat("_Mode", 2);
+                    m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    m.SetInt("_ZWrite", 0);
+                    m.DisableKeyword("_ALPHATEST_ON");
+                    m.EnableKeyword("_ALPHABLEND_ON");
+                    m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    m.renderQueue = 3000;
+                }
+            }
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Clamp01(elapsed / duration);
+
+            foreach (Material m in mats)
+            {
+                if (m != null)
+                {
+                    Color c = m.color;
+                    c.a = alpha;
+                    m.color = c;
+                }
+            }
+
+            yield return null;
+        }
+
+        foreach (Material m in mats)
+        {
+            if (m != null)
+            {
+                Color c = m.color;
+                c.a = 1f;
+                m.color = c;
+
+                m.SetFloat("_Mode", 0);
+                m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
+                m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
+                m.SetInt("_ZWrite", 1);
+                m.DisableKeyword("_ALPHATEST_ON");
+                m.DisableKeyword("_ALPHABLEND_ON");
+                m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                m.renderQueue = -1;
+            }
+        }
+    }
+
+    IEnumerator FadeInSegmentWithLights(Segment seg, float duration)
+    {
+        if (seg == null) yield break;
+
+        Renderer[] renderers = seg.GetComponentsInChildren<Renderer>();
+        Light[] lights = seg.GetComponentsInChildren<Light>();
+
+        // Store and zero out light intensities
+        float[] originalIntensities = new float[lights.Length];
+        for (int i = 0; i < lights.Length; i++)
+        {
+            originalIntensities[i] = lights[i].intensity;
+            lights[i].intensity = 0f;
+        }
+
+        List<Material> mats = new List<Material>();
+        foreach (Renderer r in renderers)
+        {
+            foreach (Material m in r.materials)
+            {
+                if (m.HasProperty("_Color"))
+                {
+                    Color c = m.color;
+                    c.a = 0f;
+                    m.color = c;
+
+                    m.SetFloat("_Mode", 2);
+                    m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    m.SetInt("_ZWrite", 0);
+                    m.DisableKeyword("_ALPHATEST_ON");
+                    m.EnableKeyword("_ALPHABLEND_ON");
+                    m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    m.renderQueue = 3000;
+                    mats.Add(m);
+                }
+            }
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Clamp01(elapsed / duration);
+
+            foreach (Material m in mats)
+            {
+                if (m != null)
+                {
+                    Color c = m.color;
+                    c.a = alpha;
+                    m.color = c;
+                }
+            }
+
+            for (int i = 0; i < lights.Length; i++)
+            {
+                if (lights[i] != null)
+                    lights[i].intensity = Mathf.Lerp(0f, originalIntensities[i], alpha);
+            }
+
+            yield return null;
+        }
+
+        foreach (Material m in mats)
+        {
+            if (m != null)
+            {
+                Color c = m.color;
+                c.a = 1f;
+                m.color = c;
+
+                m.SetFloat("_Mode", 0);
+                m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
+                m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
+                m.SetInt("_ZWrite", 1);
+                m.DisableKeyword("_ALPHATEST_ON");
+                m.DisableKeyword("_ALPHABLEND_ON");
+                m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                m.renderQueue = -1;
+            }
+        }
+
+        for (int i = 0; i < lights.Length; i++)
+        {
+            if (lights[i] != null)
+                lights[i].intensity = originalIntensities[i];
+        }
     }
 
     void SetupSegment(Segment newSeg)
@@ -96,23 +339,31 @@ public class EndlessManager : MonoBehaviour
 
         newSeg.gameObject.name = newSeg.gameObject.name.Replace("(Clone)", "") + "_Lvl_" + GameManager.instance.currentLevel;
 
-        if (roomMemory.ContainsKey(newSeg.globalIndex)) isAnomaly = roomMemory[newSeg.globalIndex];
+        if (GameManager.instance.currentLevel >= finalLevel)
+        {
+            isAnomaly = false;
+        }
+        else if (roomMemory.ContainsKey(newSeg.globalIndex))
+        {
+            isAnomaly = roomMemory[newSeg.globalIndex];
+        }
         else
         {
             if (!isCorner && GameManager.instance.currentLevel > 0)
             {
                 if (forceAnomaliesForTesting) isAnomaly = true;
-
-                // THE PARANOIA MECHANIC: 
-                // Instead of 0% (safe), there is a rare 10% chance of a back-to-back anomaly!
                 else if (isFlushingBuffer) isAnomaly = Random.value < 0.10f;
-
                 else if (normalStreak >= 2) isAnomaly = true;
-                else isAnomaly = Random.value < 0.35f; // Standard 35% chance
+                else isAnomaly = Random.value < 0.35f;
 
                 if (isAnomaly) normalStreak = 0;
                 else normalStreak++;
             }
+            else
+            {
+                isAnomaly = false;
+            }
+
             roomMemory.Add(newSeg.globalIndex, isAnomaly);
         }
 
@@ -132,9 +383,7 @@ public class EndlessManager : MonoBehaviour
 
         Transform entrance = activeSegments[2].socketIn;
 
-        // NEGATIVE X-AXIS: Subtracting the right vector pushes you safely inside the room!
         playerTransform.position = entrance.position - (entrance.right * 4f) + (Vector3.up * 1.5f);
-
         playerTransform.rotation = entrance.rotation;
 
         if (cc != null) cc.enabled = true;
@@ -178,15 +427,25 @@ public class EndlessManager : MonoBehaviour
             }
         }
 
-        if (currentPlayerIndex >= 4)
+        // SAFEGUARD: Once the ending hallway is spawned, keep a larger buffer
+        // behind the player so turning around doesn't show an empty void.
+        int bufferBehind = hasSpawnedEnding ? 4 : 2;
+        int bufferAhead = hasSpawnedEnding ? 2 : 4;
+        int maxSegments = bufferBehind + bufferAhead + 1; // +1 for the room player stands in
+
+        if (currentPlayerIndex >= bufferAhead + 1)
         {
             SpawnForward();
-            if (activeSegments.Count > 7) RemoveSegment(0);
+            // Only remove the tail if we have enough segments behind the player
+            if (activeSegments.Count > maxSegments && currentPlayerIndex > bufferBehind)
+                RemoveSegment(0);
         }
-        else if (currentPlayerIndex <= 2)
+        else if (currentPlayerIndex <= bufferBehind - 1)
         {
             SpawnBackward();
-            if (activeSegments.Count > 7) RemoveSegment(activeSegments.Count - 1);
+            // Only remove the head if we have enough segments ahead of the player
+            if (activeSegments.Count > maxSegments && currentPlayerIndex < activeSegments.Count - bufferAhead)
+                RemoveSegment(activeSegments.Count - 1);
         }
     }
 
@@ -287,12 +546,20 @@ public class EndlessManager : MonoBehaviour
         frontGlobalIndex = currentRoom.globalIndex;
         backGlobalIndex = currentRoom.globalIndex;
 
-        // Activate the Grace Period before building the new buffer!
         isFlushingBuffer = true;
-        for (int i = 0; i < 3; i++) SpawnForward();
-        for (int i = 0; i < 3; i++) SpawnBackward();
-        isFlushingBuffer = false;
 
+        if (GameManager.instance.isFlowReversed)
+        {
+            for (int i = 0; i < 3; i++) SpawnBackward();
+            for (int i = 0; i < 3; i++) SpawnForward();
+        }
+        else
+        {
+            for (int i = 0; i < 3; i++) SpawnForward();
+            for (int i = 0; i < 3; i++) SpawnBackward();
+        }
+
+        isFlushingBuffer = false;
         currentPlayerIndex = 3;
     }
 }
